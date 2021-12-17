@@ -1,14 +1,7 @@
 import time
 import random
+from hashlib import sha512 as H
 from Server import Server
-
-def H(s, x):
-    res = ''
-    x += str(s)
-    for i in range(len(x)):
-        a = (ord(x[(i+1) % len(x)]) + ord(x[(i-1) % len(x)])) % (i+1)#(ord(x[i]) + i)
-        res += str(a)
-    return res
 
 if __name__ == '__main__':
     print('Регистрация')
@@ -18,8 +11,8 @@ if __name__ == '__main__':
     g = 2
     I = input('Введите логин:')
     p = input('Введите пароль:')
-    x = int(H(ts, p))
-    v = g ** x % N
+    x = int(H(str(ts).encode() + str(p).encode()).hexdigest(), 16)
+    v = pow(g,x,N)
     server.add(I,v,ts)
     print("Регистрация завершена")
     while True:
@@ -31,18 +24,29 @@ if __name__ == '__main__':
             print('Неверный логин или пароль')
             break
         a = random.randint(10, 100)
-        A = g ** a % N
+        A = pow(g,a,N)
         verificator = server.database[emails.index(email)][1]
         salt = server.database[emails.index(email)][2]
         b = random.randint(10, 100)
-        B = 3 * verificator + g ^ b % N
-        u = int(H(A, str(B)))
+        B = (3 * verificator + pow(g,b,N)) % N
+        u = int(H(str(A).encode() + str(B).encode()).hexdigest(), 16)
         if u == 0:
             print('Соединение разорвано')
             break
-        x = int(H(salt, password))
-        S1 = ((B - 3 * (g ^ x % N)) ^ (a + u * x)) % N
-        K1 = H('', str(S1))
-        S2 = ((A * (v ^ u % N)) ^ b) % N
-        K2 = H('', str(S2))
-        print(K1 == K2)
+        x = int(H(str(salt).encode() + str(password).encode()).hexdigest(), 16)
+        S1 = pow((B - 3 * pow(g , x , N)), (a + u * x), N)
+        K1 = int(H(str(S1).encode()).hexdigest(), 16)
+        S2 = pow(A * pow(v , u , N), b, N)
+        K2 = int(H(str(S2).encode()).hexdigest(), 16)
+        H_n = int(H(str(N).encode()).hexdigest(), 16)
+        H_g = int(H(str(g).encode()).hexdigest(), 16)
+        Hn_xor_Hg = H_n ^ H_g
+        H_I = int(H(str(email).encode()).hexdigest(), 16)
+        M_Client = int(H(str(Hn_xor_Hg).encode() + str(H_I).encode() + str(S1).encode() + str(A).encode() + str(B).encode() + str(3).encode()).hexdigest(), 16)
+        M_Server = int(H(str(Hn_xor_Hg).encode() + str(H_I).encode() + str(S2).encode() + str(A).encode() + str(B).encode() + str(3).encode()).hexdigest(), 16)
+        if M_Client == M_Server:
+            R_Server = int(H(str(A).encode() + str(M_Server).encode() + str(K2).encode()).hexdigest(), 16)
+            R_Client = int(H(str(A).encode() + str(M_Client).encode() + str(K1).encode()).hexdigest(), 16)
+            print(R_Server == R_Client)
+        else:
+            print('В доступе отказано')
